@@ -1,0 +1,31 @@
+name = "interncert"
+main = "backend/src/worker.js"
+compatibility_date = "2026-10-08"
+compatibility_flags = ["nodejs_compat"]
+
+# Static Frontend Assets (Vite Dist)
+[assets]
+directory = "./frontend/dist"
+binding = "ASSETS"
+
+# Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "interncert-d1"
+database_id = "c3eba915-d9de-432e-8ea2-d6e3620dcb96"
+
+# Cloudflare R2 Storage Bucket Binding
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "interncert-certificates"
+
+# Environment Variables
+[vars]
+NODE_ENV = "production"
+PORT = "8787"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "465"
+SMTP_USER = "hrishickrudhreshkj33.cse23@nehrucolleges.com"
+SMTP_PASS = "blvdapzpxqixjxme"
+SMTP_FROM = "InternCert Certification Cell <hrishickrudhreshkj33.cse23@nehrucolleges.com>"
+

@@ -1,0 +1,32 @@
+# Cloudflare Workers Configuration for InternCert
+name = "interncert-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "interncert-db"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Cloudflare R2 Object Storage Bucket for Certificates
+[[r2_buckets]]
+binding = "CERT_STORAGE"
+bucket_name = "interncert-certificates"
+
+# Environment Variables
+[vars]
+ENVIRONMENT = "production"
+JWT_SECRET = "interncert-production-secret-key-change-me"
+GMAIL_USER = "internships@interncert.org"
+
+# Cloudflare Queues for background certificate generation & email workers
+[[queues.producers]]
+binding = "CERT_QUEUE"
+queue = "interncert-cert-generation-queue"
+
+[[queues.consumers]]
+queue = "interncert-cert-generation-queue"
+max_batch_size = 10
+max_batch_timeout = 30
