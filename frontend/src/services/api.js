@@ -1,4 +1,15 @@
-const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const getApiBase = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+  }
+  // When running on Cloudflare Pages (*.pages.dev), target the live Cloudflare Worker API
+  if (typeof window !== 'undefined' && window.location.hostname.includes('pages.dev')) {
+    return 'https://interncert.hrishickrudhresh.workers.dev/api';
+  }
+  return '/api';
+};
+
+const API_BASE = getApiBase();
 
 async function handleResponse(res, fallbackMessage = 'Request failed') {
   const text = await res.text();
@@ -17,6 +28,7 @@ async function handleResponse(res, fallbackMessage = 'Request failed') {
   }
   return data;
 }
+
 
 export const api = {
   // Auth endpoints
@@ -101,9 +113,22 @@ export const api = {
     return handleResponse(res, 'Certificate not found');
   },
 
+  getApiBase() {
+    return API_BASE;
+  },
+
   getDownloadUrl(certificateId) {
     return `${API_BASE}/certificates/${certificateId}/download`;
   },
+
+  getSampleExcelUrl() {
+    return `${API_BASE}/admin/sample-excel`;
+  },
+
+  getDownloadAllZipUrl() {
+    return `${API_BASE}/admin/certificates/download-all`;
+  },
+
 
   // Admin Endpoints
   async getAdminStats() {

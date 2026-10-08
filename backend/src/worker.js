@@ -1690,82 +1690,103 @@ app.delete('/api/admin/candidates/:id', async (c) => {
   }
 });
 
-// 21. Admin Generate Certificates (Bulk)
+// 21. Admin Generate Certificates (Bulk & All Pending)
 app.post('/api/admin/certificates/generate', async (c) => {
   try {
-    const { candidateIds, templateId = 'classic-gold', sendEmail = true } = await c.req.json();
-    if (!candidateIds || !candidateIds.length) {
-      return c.json({ error: 'No candidates selected' }, 400);
+    const { candidateIds, templateId = 'classic-gold', sendEmail = true } = await c.req.json().catch(() => ({}));
+    let targetCandidates = [];
+
+    if (candidateIds && Array.isArray(candidateIds) && candidateIds.length > 0) {
+      for (const candId of candidateIds) {
+        const cand = await c.env.DB.prepare('SELECT * FROM candidates WHERE id = ?').bind(candId).first();
+        if (cand) targetCandidates.push(cand);
+      }
+    } else {
+      // Default to all pending candidates
+      const pendingRows = await c.env.DB.prepare("SELECT * FROM candidates WHERE status = 'pending' OR status IS NULL").all();
+      targetCandidates = (pendingRows && pendingRows.results) ? pendingRows.results : [];
+    }
+
+    if (!targetCandidates || targetCandidates.length === 0) {
+      return c.json({ error: 'No pending candidates found to generate certificates for.' }, 400);
     }
 
     const results = [];
+    let successful = 0;
+    let failed = 0;
     const origin = new URL(c.req.url).origin;
 
-    for (const candId of candidateIds) {
-      const cand = await c.env.DB.prepare('SELECT * FROM candidates WHERE id = ?').bind(candId).first();
-      if (!cand) continue;
+    for (const cand of targetCandidates) {
+      try {
+        const prefix = (cand.internship_domain || '').includes('Cyber') ? 'CYB' : 'INT';
+        const randomSeq = Math.floor(100000 + Math.random() * 900000);
+        const certId = `CERT-2026-${prefix}-${randomSeq}`;
+        const certDbId = `cert_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-      const prefix = (cand.internship_domain || '').includes('Cyber') ? 'CYB' : 'INT';
-      const randomSeq = Math.floor(100000 + Math.random() * 900000);
-      const certId = `CERT-2026-${prefix}-${randomSeq}`;
-      const certDbId = `cert_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const pdfBytes = await generateCertificatePdf({
+          certificateId: certId,
+          recipientName: cand.name,
+          department: cand.department,
+          yearOfStudy: cand.year_of_study,
+          internshipDomain: cand.internship_domain,
+          startDate: cand.start_date,
+          endDate: cand.end_date,
+          templateId
+        }, origin);
 
-      const pdfBytes = await generateCertificatePdf({
-        certificateId: certId,
-        recipientName: cand.name,
-        department: cand.department,
-        yearOfStudy: cand.year_of_study,
-        internshipDomain: cand.internship_domain,
-        startDate: cand.start_date,
-        endDate: cand.end_date,
-        templateId
-      }, origin);
-
-      const r2Key = `certificates/${certId}.pdf`;
-      if (c.env.BUCKET) {
-        await c.env.BUCKET.put(r2Key, pdfBytes, {
-          httpMetadata: { contentType: 'application/pdf' }
-        });
-      }
-
-      await c.env.DB.prepare(`
-        INSERT INTO certificates (
-          id, certificate_id, candidate_id, recipient_name, recipient_email,
-          department, year_of_study, internship_domain, start_date, end_date,
-          certificate_number, pdf_path, pdf_url, template_id, status, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valid', 'admin_bulk')
-      `).bind(
-        certDbId, certId, cand.id, cand.name, cand.email.toLowerCase(),
-        cand.department, cand.year_of_study, cand.internship_domain,
-        cand.start_date, cand.end_date, `${prefix}-2026-${randomSeq}`,
-        r2Key, `/api/certificates/${certId}/download`, templateId
-      ).run();
-
-      await c.env.DB.prepare("UPDATE candidates SET status = 'certified' WHERE id = ?").bind(cand.id).run();
-
-      // Dispatch verified credential email notification
-      if (sendEmail !== false) {
-        try {
-          await dispatchCertificateEmail(c.env, {
-            certificateId: certId,
-            certDbId: certDbId,
-            recipientEmail: cand.email,
-            recipientName: cand.name,
-            internshipDomain: cand.internship_domain,
-            pdfBytes,
-            origin
+        const r2Key = `certificates/${certId}.pdf`;
+        if (c.env.BUCKET) {
+          await c.env.BUCKET.put(r2Key, pdfBytes, {
+            httpMetadata: { contentType: 'application/pdf' }
           });
-        } catch (mailErr) {
-          console.warn('[Admin Cert Mail Dispatch Error]', mailErr);
         }
-      }
 
-      results.push({ candidateId: cand.id, certificateId: certId, name: cand.name, status: 'success' });
+        await c.env.DB.prepare(`
+          INSERT INTO certificates (
+            id, certificate_id, candidate_id, recipient_name, recipient_email,
+            department, year_of_study, internship_domain, start_date, end_date,
+            certificate_number, pdf_path, pdf_url, template_id, status, source
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valid', 'admin_bulk')
+        `).bind(
+          certDbId, certId, cand.id, cand.name, cand.email.toLowerCase(),
+          cand.department, cand.year_of_study, cand.internship_domain,
+          cand.start_date, cand.end_date, `${prefix}-2026-${randomSeq}`,
+          r2Key, `/api/certificates/${certId}/download`, templateId
+        ).run();
+
+        await c.env.DB.prepare("UPDATE candidates SET status = 'certified' WHERE id = ?").bind(cand.id).run();
+
+        // Dispatch verified credential email notification
+        if (sendEmail !== false) {
+          try {
+            await dispatchCertificateEmail(c.env, {
+              certificateId: certId,
+              certDbId: certDbId,
+              recipientEmail: cand.email,
+              recipientName: cand.name,
+              internshipDomain: cand.internship_domain,
+              pdfBytes,
+              origin
+            });
+          } catch (mailErr) {
+            console.warn('[Admin Cert Mail Dispatch Error]', mailErr);
+          }
+        }
+
+        successful++;
+        results.push({ candidateId: cand.id, certificateId: certId, name: cand.name, status: 'success' });
+      } catch (err) {
+        failed++;
+        results.push({ candidateId: cand.id, name: cand.name, status: 'failed', error: err.message });
+      }
     }
 
     return c.json({
       success: true,
-      totalGenerated: results.length,
+      totalProcessed: targetCandidates.length,
+      successful,
+      failed,
+      results,
       certificates: results
     });
   } catch (err) {

@@ -895,7 +895,7 @@ export default function AdminDashboard() {
 
               {/* Sample Excel Download Button */}
               <a
-                href="/api/admin/sample-excel"
+                href={api.getSampleExcelUrl()}
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 self-start sm:self-auto"
               >
                 <Download className="w-4 h-4 text-emerald-400" />
@@ -1583,7 +1583,7 @@ export default function AdminDashboard() {
 
                 <div className="flex items-center justify-between pt-2">
                   <a
-                    href="/api/admin/certificates/download-all"
+                    href={api.getDownloadAllZipUrl()}
                     className="px-4 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-500 text-white shadow-glow-brand flex items-center gap-1.5"
                   >
                     <Download className="w-4 h-4" />
